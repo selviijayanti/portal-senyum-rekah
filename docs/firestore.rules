@@ -1,0 +1,127 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ───────────────────────────────────────────────────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && getRole() == 'super_admin';
+    }
+
+    function isResepsionis() {
+      return isAuthenticated() && (getRole() == 'resepsionis' || getRole() == 'super_admin');
+    }
+
+    function isDokter() {
+      return isAuthenticated() && (getRole() == 'dokter' || getRole() == 'super_admin');
+    }
+
+    function isPasien() {
+      return isAuthenticated() && getRole() == 'pasien';
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // ─── users/{uid} ─────────────────────────────────────────────────────────
+    // • Siapapun yang login bisa membaca data diri sendiri
+    // • Super Admin bisa membaca semua pengguna
+    // • Super Admin bisa memperbarui peran & status aktif pengguna lain
+    // • Pengguna bisa memperbarui nama & noHp diri sendiri
+    match /users/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isSuperAdmin() || isResepsionis() || isDokter());
+      allow create: if isAuthenticated() && request.auth.uid == uid;
+      allow update: if isAuthenticated() && (
+        // Pengguna memperbarui profil sendiri (hanya nama & noHp)
+        (request.auth.uid == uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nama', 'noHp'])) ||
+        // Super Admin bisa mengubah apa saja
+        isSuperAdmin()
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── layanan/{id} ────────────────────────────────────────────────────────
+    // • Semua pengguna yang login bisa membaca layanan (untuk form buat janji)
+    // • Hanya Super Admin yang bisa mengelola layanan
+    match /layanan/{id} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // ─── jadwal_dokter/{id} ──────────────────────────────────────────────────
+    // • Semua yang login bisa membaca jadwal dokter (untuk form buat janji)
+    // • Hanya Super Admin yang bisa mengelola jadwal dokter
+    match /jadwal_dokter/{id} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isSuperAdmin();
+    }
+
+    // ─── janji_temu/{id} ─────────────────────────────────────────────────────
+    // • Pasien bisa membuat janji dan membaca/membatalkan janji miliknya sendiri
+    // • Resepsionis bisa membaca semua janji dan mengubah status
+    // • Dokter bisa membaca janji miliknya
+    // • Super Admin bisa melakukan segalanya
+    match /janji_temu/{id} {
+      allow read: if isAuthenticated() && (
+        resource.data.pasienId == request.auth.uid ||
+        isResepsionis() ||
+        isDokter() ||
+        isSuperAdmin()
+      );
+      allow create: if isAuthenticated() && request.resource.data.pasienId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        // Pasien hanya bisa membatalkan janji sendiri (mengubah status menjadi "dibatalkan")
+        (resource.data.pasienId == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'alasanBatal']) &&
+         request.resource.data.status == 'dibatalkan') ||
+        // Resepsionis bisa mengubah status, jadwal, alasan batal
+        isResepsionis() ||
+        // Dokter bisa mengubah status dan data pemeriksaan
+        isDokter() ||
+        isSuperAdmin()
+      );
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── catatan_perawatan/{id} ──────────────────────────────────────────────
+    // • Pasien bisa membaca catatan perawatan miliknya (untuk riwayat)
+    // • Dokter bisa membaca catatan yang pernah ditulis olehnya
+    // • Resepsionis TIDAK bisa membaca catatan medis
+    // • Super Admin bisa membaca semua
+    match /catatan_perawatan/{id} {
+      allow read: if isAuthenticated() && (
+        resource.data.pasienId == request.auth.uid ||
+        (isDokter() && resource.data.dokterId == request.auth.uid) ||
+        isSuperAdmin()
+      );
+      allow create: if isDokter() && request.resource.data.dokterId == request.auth.uid;
+      allow update: if isDokter() && resource.data.dokterId == request.auth.uid;
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── slot_terisi/{id} ────────────────────────────────────────────────────
+    // • Semua yang login bisa membaca (untuk cek slot kosong saat buat janji)
+    // • Pasien bisa menulis slot (saat membuat janji - ID slot = ID janji)
+    // • Resepsionis dan Dokter bisa update/delete (jadwal ulang & selesai)
+    // • Super Admin bisa segalanya
+    match /slot_terisi/{id} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.dokterId != null;
+      allow update: if isResepsionis() || isDokter() || isSuperAdmin();
+      allow delete: if isAuthenticated() && (
+        isResepsionis() || isDokter() || isSuperAdmin() ||
+        // Pasien membatalkan janji miliknya (hapus slot_terisi)
+        get(/databases/$(database)/documents/janji_temu/$(id)).data.pasienId == request.auth.uid
+      );
+    }
+  }
+}

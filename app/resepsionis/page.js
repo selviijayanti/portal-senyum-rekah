@@ -18,7 +18,9 @@ import {
   User,
   Stethoscope,
   Activity,
+  CalendarDays,
 } from "lucide-react";
+import { getLocalDateString, getTomorrowDateString, formatDateIndo } from "@/lib/dateUtils";
 
 export default function DasborResepsionisPage() {
   const router = useRouter();
@@ -111,10 +113,15 @@ export default function DasborResepsionisPage() {
   };
 
   useEffect(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getLocalDateString();
     setTodayStr(today);
     fetchData(today);
   }, []);
+
+  const handleSelectDate = (newDate) => {
+    setTodayStr(newDate);
+    fetchData(newDate);
+  };
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -142,17 +149,25 @@ export default function DasborResepsionisPage() {
             <div>
               <h1 className="text-xl font-bold text-gray-900">Dasbor Resepsionis</h1>
               <p className="text-xs text-[#5A6B78]">
-                Ringkasan janji temu hari ini ({todayStr}) dan antrean konfirmasi
+                Ringkasan janji temu tanggal {todayStr} ({formatDateIndo(todayStr)}) dan antrean konfirmasi
               </p>
             </div>
 
-            <Link
-              href="/resepsionis/janji"
-              className="inline-flex items-center gap-2 bg-[#0E7490] hover:bg-[#155E75] text-white font-semibold px-4 py-2.5 rounded-xl text-xs transition-colors shadow-xs"
-            >
-              <Calendar className="w-4 h-4" />
-              Buka Kelola Janji
-            </Link>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={todayStr}
+                onChange={(e) => handleSelectDate(e.target.value)}
+                className="px-2.5 py-1.5 text-xs font-medium bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-[#0E7490]"
+              />
+              <Link
+                href="/resepsionis/janji"
+                className="inline-flex items-center gap-2 bg-[#0E7490] hover:bg-[#155E75] text-white font-semibold px-4 py-2 rounded-xl text-xs transition-colors shadow-xs"
+              >
+                <Calendar className="w-4 h-4" />
+                Buka Kelola Janji
+              </Link>
+            </div>
           </div>
 
           {/* Kartu Metrik Ringkasan */}

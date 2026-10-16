@@ -31,6 +31,20 @@ import {
   XCircle,
   UserCheck,
 } from "lucide-react";
+import { getLocalDateString } from "@/lib/dateUtils";
+
+// Helper: konversi "HH:MM" → menit sejak tengah malam
+const timeToMin = (t) => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+};
+
+// Cek apakah dua slot bertumpang tindih berdasarkan jam mulai dan durasi
+const slotsOverlap = (jamA, durA, jamB, durB) => {
+  const startA = timeToMin(jamA);
+  const startB = timeToMin(jamB);
+  return startA < startB + durB && startB < startA + durA;
+};
 
 function RincianJanjiResepsionisContent() {
   const { id } = useParams();
@@ -41,6 +55,7 @@ function RincianJanjiResepsionisContent() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   // Modal Batalkan states
   const [batalModalOpen, setBatalModalOpen] = useState(false);
@@ -52,6 +67,7 @@ function RincianJanjiResepsionisContent() {
   const [newJam, setNewJam] = useState("");
   const [availableSlots, setAvailableSlots] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [jadwalList, setJadwalList] = useState([]);
 
   const [todayStr, setTodayStr] = useState("");
 
@@ -129,14 +145,30 @@ function RincianJanjiResepsionisContent() {
   };
 
   useEffect(() => {
-    setTodayStr(new Date().toISOString().split("T")[0]);
+    setTodayStr(getLocalDateString());
     fetchJanjiDetail();
   }, [id]);
+
+  // Ambil jadwal_dokter untuk reschedule slot
+  useEffect(() => {
+    const fetchJadwal = async () => {
+      try {
+        const snap = await getDocs(collection(db, "jadwal_dokter"));
+        const list = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+        setJadwalList(list);
+      } catch (e) {
+        console.warn("Gagal memuat jadwal dokter:", e);
+      }
+    };
+    fetchJadwal();
+  }, []);
 
   // Aksi 1: Konfirmasi Janji
   const handleKonfirmasi = async () => {
     if (!janji) return;
     setActionLoading(true);
+    setActionError("");
     try {
       const janjiRef = doc(db, "janji_temu", janji.id);
       await updateDoc(janjiRef, {
@@ -145,7 +177,7 @@ function RincianJanjiResepsionisContent() {
       await fetchJanjiDetail();
     } catch (e) {
       console.error("Gagal konfirmasi:", e);
-      alert("Gagal mengonfirmasi janji.");
+      setActionError("Gagal mengonfirmasi janji. Coba lagi.");
     } finally {
       setActionLoading(false);
     }
@@ -157,6 +189,7 @@ function RincianJanjiResepsionisContent() {
     if (!janji || !alasanBatal.trim()) return;
 
     setActionLoading(true);
+    setActionError("");
     try {
       const janjiRef = doc(db, "janji_temu", janji.id);
       await updateDoc(janjiRef, {
@@ -176,7 +209,7 @@ function RincianJanjiResepsionisContent() {
       await fetchJanjiDetail();
     } catch (e) {
       console.error("Gagal membatalkan:", e);
-      alert("Gagal membatalkan janji.");
+      setActionError("Gagal membatalkan janji. Coba lagi.");
     } finally {
       setActionLoading(false);
     }
@@ -194,7 +227,7 @@ function RincianJanjiResepsionisContent() {
       await fetchJanjiDetail();
     } catch (e) {
       console.error("Gagal menandai hadir:", e);
-      alert("Gagal menandai kehadiran pasien.");
+      setActionError("Gagal menandai kehadiran pasien. Coba lagi.");
     } finally {
       setActionLoading(false);
     }
@@ -221,37 +254,51 @@ function RincianJanjiResepsionisContent() {
           return;
         }
 
-        // Slot standar 09:00 - 15:00
+        // Cari jadwal dokter pada hari ini dari jadwal_dokter (bukan hardcode)
+        const dokterJadwal = jadwalList.find(
+          (j) =>
+            j.dokterId === janji.dokterId &&
+            j.hari?.toLowerCase() === dayName
+        );
+        const jamMulai = dokterJadwal?.jamMulai || "09:00";
+        const jamSelesai = dokterJadwal?.jamSelesai || "15:00";
+
+        // Buat semua kemungkinan slot per 30 menit
         const allPossibleSlots = [];
-        let curH = 9;
-        let curM = 0;
-        while (curH < 15) {
+        let [curH, curM] = jamMulai.split(":").map(Number);
+        const [endH, endM] = jamSelesai.split(":").map(Number);
+        while (curH < endH || (curH === endH && curM < endM)) {
           allPossibleSlots.push(
             `${String(curH).padStart(2, "0")}:${String(curM).padStart(2, "0")}`
           );
           curM += 30;
-          if (curM >= 60) {
-            curH += 1;
-            curM = 0;
-          }
+          if (curM >= 60) { curH += 1; curM = 0; }
         }
 
-        // Ambil slot_terisi untuk tanggal ini dan dokter ini
+        // Ambil slot_terisi untuk tanggal dan dokter ini (beserta durasi)
         const qSlots = query(
           collection(db, "slot_terisi"),
           where("dokterId", "==", janji.dokterId),
           where("tanggal", "==", newTanggal)
         );
         const snap = await getDocs(qSlots);
-        const booked = new Set();
+        const bookedSlots = [];
         snap.forEach((d) => {
-          // Abaikan slot milik janji ini sendiri jika sama
+          // Abaikan slot milik janji ini sendiri
           if (d.id !== janji.id && d.data().jam) {
-            booked.add(d.data().jam);
+            bookedSlots.push({ jam: d.data().jam, durasiMenit: d.data().durasiMenit || 30 });
           }
         });
 
-        const free = allPossibleSlots.filter((s) => !booked.has(s));
+        // Durasi layanan janji ini
+        const rescheduleDurasi = janji.durasiMenit || 30;
+
+        // Filter: slot kosong = tidak ada overlap dengan janji lain
+        const free = allPossibleSlots.filter((slot) =>
+          !bookedSlots.some(({ jam, durasiMenit }) =>
+            slotsOverlap(slot, rescheduleDurasi, jam, durasiMenit)
+          )
+        );
         setAvailableSlots(free);
         if (free.length > 0) setNewJam(free[0]);
       } catch (err) {
@@ -262,7 +309,7 @@ function RincianJanjiResepsionisContent() {
     };
 
     fetchRescheduleSlots();
-  }, [newTanggal, janji]);
+  }, [newTanggal, janji, jadwalList]);
 
   // Simpan Jadwal Ulang
   const handleSimpanJadwalUlang = async (e) => {
@@ -270,8 +317,8 @@ function RincianJanjiResepsionisContent() {
     if (!janji || !newTanggal || !newJam) return;
 
     setActionLoading(true);
+    setActionError("");
     try {
-      // 1. Update janji_temu
       const janjiRef = doc(db, "janji_temu", janji.id);
       await updateDoc(janjiRef, {
         tanggal: newTanggal,
@@ -291,7 +338,7 @@ function RincianJanjiResepsionisContent() {
       await fetchJanjiDetail();
     } catch (e) {
       console.error("Gagal menjadwal ulang:", e);
-      alert("Gagal menjadwal ulang janji.");
+      setActionError("Gagal menjadwal ulang janji. Coba lagi.");
     } finally {
       setActionLoading(false);
     }
@@ -447,6 +494,14 @@ function RincianJanjiResepsionisContent() {
                       Tandai Pasien Hadir
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Pesan error tindakan inline */}
+              {actionError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{actionError}</span>
                 </div>
               )}
 

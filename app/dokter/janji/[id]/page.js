@@ -31,6 +31,7 @@ import {
   CheckCircle2,
   History,
   Activity,
+  UserCheck,
 } from "lucide-react";
 
 function PemeriksaanDokterContent() {
@@ -73,8 +74,10 @@ function PemeriksaanDokterContent() {
       const isMyAppointment =
         isSuperAdmin ||
         data.dokterId === user.uid ||
-        (user.email?.includes("bima") && data.dokterId === "dokter_bima") ||
-        (user.email?.includes("sinta") && data.dokterId === "dokter_sinta");
+        (userProfile?.nama?.toLowerCase().includes("bima") && data.dokterId === "dokter_bima") ||
+        (userProfile?.nama?.toLowerCase().includes("sinta") && data.dokterId === "dokter_sinta") ||
+        (user?.email?.toLowerCase().includes("bima") && data.dokterId === "dokter_bima") ||
+        (user?.email?.toLowerCase().includes("sinta") && data.dokterId === "dokter_sinta");
 
       if (!isMyAppointment) {
         setErrorMsg("Janji tidak ditemukan.");
@@ -354,8 +357,21 @@ function PemeriksaanDokterContent() {
                   </div>
                 </form>
               ) : (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
-                  Janji ini berstatus <span className="font-bold uppercase">{janji.status}</span>. Hanya janji dengan status <strong>Hadir</strong> yang dapat diperiksa oleh dokter.
+                <div className="p-5 bg-amber-50 border border-amber-200 rounded-2xl space-y-3 text-amber-900">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900">
+                        Status Janji Saat Ini: <span className="uppercase text-[#0E7490]">{janji.status}</span>
+                      </h4>
+                      <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                        Sesuai alur operasional <strong>PRD Klinik Senyum Rekah (Bab 2.1 & 4.10)</strong>, pengisian <strong>Tindakan Medis</strong> dan <strong>Catatan Perawatan</strong> hanya dapat dilakukan ketika pasien telah tiba di klinik dan ditandai <strong>Hadir</strong> oleh <strong>Resepsionis</strong>.
+                      </p>
+                      <p className="text-xs text-slate-500 mt-2">
+                        Silakan tunggu Resepsionis (Laras) melakukan konfirmasi dan check-in kehadiran pasien. Begitu status menjadi <strong>Hadir</strong>, formulir pemeriksaan ini akan otomatis aktif.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

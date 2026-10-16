@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { getDefaultRoute } from "@/components/RouteGuard";
-import { Activity, Mail, Lock, AlertCircle, Loader2 } from "lucide-react";
+import { Activity, Mail, Lock, AlertCircle, Loader2, Eye, EyeOff } from "lucide-react";
 
 export default function MasukPage() {
   const router = useRouter();
@@ -13,14 +13,28 @@ export default function MasukPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset status submitting dan tangani BFCache browser (misal user klik tombol Back)
+  useEffect(() => {
+    setIsSubmitting(false);
+
+    const handlePageShow = () => {
+      setIsSubmitting(false);
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
 
   // Jika sudah masuk dan profil terbaca, arahkan ke halamannya langsung
   useEffect(() => {
     if (!loading && user && userProfile) {
       if (userProfile.aktif === false) {
         setErrorMsg("Akun Anda dinonaktifkan. Hubungi klinik.");
+        setIsSubmitting(false);
         return;
       }
       const target = getDefaultRoute(userProfile.role);
@@ -132,14 +146,26 @@ export default function MasukPage() {
               </label>
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full px-3.5 py-2.5 pl-10 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E7490] focus:border-transparent"
+                  className="w-full px-3.5 py-2.5 pl-10 pr-10 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0E7490] focus:border-transparent"
                 />
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-3 text-slate-400 hover:text-gray-600 transition-colors focus:outline-none"
+                  title={showPassword ? "Sembunyikan kata sandi" : "Lihat kata sandi"}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
               </div>
             </div>
 

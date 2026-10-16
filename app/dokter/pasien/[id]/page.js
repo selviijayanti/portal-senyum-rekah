@@ -60,8 +60,10 @@ function RiwayatPasienDokterContent() {
         const writtenByMe =
           isSuperAdmin ||
           data.dokterId === user.uid ||
-          (user.email?.includes("bima") && data.dokterId === "dokter_bima") ||
-          (user.email?.includes("sinta") && data.dokterId === "dokter_sinta");
+          (userProfile?.nama?.toLowerCase().includes("bima") && data.dokterId === "dokter_bima") ||
+          (userProfile?.nama?.toLowerCase().includes("sinta") && data.dokterId === "dokter_sinta") ||
+          (user?.email?.toLowerCase().includes("bima") && data.dokterId === "dokter_bima") ||
+          (user?.email?.toLowerCase().includes("sinta") && data.dokterId === "dokter_sinta");
 
         if (writtenByMe) {
           rawCatatan.push({ id: d.id, ...data });

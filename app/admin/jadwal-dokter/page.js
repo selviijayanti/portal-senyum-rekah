@@ -41,6 +41,10 @@ export default function KelolaJadwalDokterPage() {
   const [jamMulai, setJamMulai] = useState("09:00");
   const [jamSelesai, setJamSelesai] = useState("15:00");
 
+  // State konfirmasi hapus jadwal
+  const [deleteId, setDeleteId] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   const fetchDokterAndJadwal = async () => {
     setLoading(true);
     setErrorMsg("");
@@ -131,14 +135,20 @@ export default function KelolaJadwalDokterPage() {
     }
   };
 
-  const handleHapusJadwal = async (id) => {
-    if (!confirm("Hapus jadwal praktik pada hari ini?")) return;
+  const handleHapusJadwal = async () => {
+    if (!deleteId) return;
+    setDeleteLoading(true);
     try {
-      await deleteDoc(doc(db, "jadwal_dokter", id));
+      await deleteDoc(doc(db, "jadwal_dokter", deleteId));
+      setDeleteId(null);
+      setSuccessMsg("Jadwal berhasil dihapus.");
       await fetchDokterAndJadwal();
     } catch (err) {
       console.error("Gagal menghapus jadwal:", err);
-      alert("Gagal menghapus jadwal.");
+      setErrorMsg("Gagal menghapus jadwal. Coba lagi.");
+      setDeleteId(null);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -248,7 +258,7 @@ export default function KelolaJadwalDokterPage() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <button
-                            onClick={() => handleHapusJadwal(item.id)}
+                            onClick={() => setDeleteId(item.id)}
                             className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Hapus jadwal hari ini"
                           >
@@ -339,6 +349,36 @@ export default function KelolaJadwalDokterPage() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Konfirmasi Hapus Jadwal */}
+          {deleteId && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200">
+                <h3 className="text-base font-bold text-gray-900 mb-1">Hapus Jadwal Praktik</h3>
+                <p className="text-xs text-[#5A6B78] mb-6">
+                  Yakin ingin menghapus jadwal praktik ini? Tindakan ini tidak dapat dibatalkan.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteId(null)}
+                    disabled={deleteLoading}
+                    className="py-2.5 px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold text-xs rounded-xl"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleHapusJadwal}
+                    disabled={deleteLoading}
+                    className="py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white font-semibold text-xs rounded-xl"
+                  >
+                    {deleteLoading ? "Menghapus..." : "Ya, Hapus"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

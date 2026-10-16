@@ -27,6 +27,20 @@ import {
   ArrowLeft,
   CheckCircle2,
 } from "lucide-react";
+import { getTomorrowDateString } from "@/lib/dateUtils";
+
+// Helper: konversi "HH:MM" → menit sejak tengah malam
+const timeToMin = (t) => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+};
+
+// Cek apakah dua slot bertumpang tindih berdasarkan jam mulai dan durasi
+const slotsOverlap = (jamA, durA, jamB, durB) => {
+  const startA = timeToMin(jamA);
+  const startB = timeToMin(jamB);
+  return startA < startB + durB && startB < startA + durA;
+};
 
 export default function BuatJanjiPage() {
   const router = useRouter();
@@ -52,9 +66,7 @@ export default function BuatJanjiPage() {
 
   // 1. Ambil Layanan Aktif, Dokter, dan Jadwal
   useEffect(() => {
-    const tmr = new Date();
-    tmr.setDate(tmr.getDate() + 1);
-    setMinDateStr(tmr.toISOString().split("T")[0]);
+    setMinDateStr(getTomorrowDateString());
 
     const fetchData = async () => {
       try {
@@ -158,23 +170,31 @@ export default function BuatJanjiPage() {
           }
         }
 
-        // Ambil slot_terisi untuk dokter dan tanggal ini
+        // Ambil slot_terisi untuk dokter dan tanggal ini (beserta durasi)
         const qSlots = query(
           collection(db, "slot_terisi"),
           where("dokterId", "==", selectedDokterId),
           where("tanggal", "==", selectedTanggal)
         );
         const slotSnap = await getDocs(qSlots);
-        const bookedTimes = new Set();
+        const bookedSlots = [];
         slotSnap.forEach((docItem) => {
           const data = docItem.data();
           if (data.jam) {
-            bookedTimes.add(data.jam);
+            bookedSlots.push({ jam: data.jam, durasiMenit: data.durasiMenit || 30 });
           }
         });
 
-        // Filter slot yang belum terisi
-        const freeSlots = allPossibleSlots.filter((slot) => !bookedTimes.has(slot));
+        // Durasi layanan yang dipilih (untuk deteksi tumpang tindih)
+        const selectedLayanan = layananList.find((l) => l.id === selectedLayananId);
+        const selectedDurasi = selectedLayanan?.durasiMenit || 30;
+
+        // Filter: slot kosong = tidak ada overlap dengan janji yang sudah ada
+        const freeSlots = allPossibleSlots.filter((slot) =>
+          !bookedSlots.some(({ jam, durasiMenit }) =>
+            slotsOverlap(slot, selectedDurasi, jam, durasiMenit)
+          )
+        );
         setAvailableSlots(freeSlots);
         if (freeSlots.length > 0) {
           setSelectedJam(freeSlots[0]);
@@ -208,22 +228,29 @@ export default function BuatJanjiPage() {
     try {
       setIsSubmitting(true);
 
-      // Cek kembali slot_terisi (race condition validation)
-      const conflictQuery = query(
+      const chosenLayanan = layananList.find((l) => l.id === selectedLayananId);
+      const durasiMenit = chosenLayanan?.durasiMenit || 30;
+
+      // Cek kembali slot_terisi (race condition validation dengan durasi tumpang tindih)
+      const allSlotsQuery = query(
         collection(db, "slot_terisi"),
         where("dokterId", "==", selectedDokterId),
-        where("tanggal", "==", selectedTanggal),
-        where("jam", "==", selectedJam)
+        where("tanggal", "==", selectedTanggal)
       );
-      const conflictSnap = await getDocs(conflictQuery);
-      if (!conflictSnap.empty) {
+      const allSlotsSnap = await getDocs(allSlotsQuery);
+      let hasConflict = false;
+      allSlotsSnap.forEach((docItem) => {
+        const data = docItem.data();
+        if (data.jam && slotsOverlap(selectedJam, durasiMenit, data.jam, data.durasiMenit || 30)) {
+          hasConflict = true;
+        }
+      });
+
+      if (hasConflict) {
         setErrorMsg("Slot ini baru saja terisi. Pilih jam lain.");
         setIsSubmitting(false);
         return;
       }
-
-      const chosenLayanan = layananList.find((l) => l.id === selectedLayananId);
-      const durasiMenit = chosenLayanan?.durasiMenit || 30;
 
       // 1. Buat dokumen janji_temu
       const newJanjiRef = doc(collection(db, "janji_temu"));

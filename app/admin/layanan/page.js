@@ -110,7 +110,7 @@ export default function KelolaLayananPage() {
       await fetchLayanan();
     } catch (err) {
       console.error("Gagal update status layanan:", err);
-      alert("Gagal memperbarui status layanan.");
+      setErrorMsg("Gagal memperbarui status layanan. Coba lagi.");
     }
   };
 

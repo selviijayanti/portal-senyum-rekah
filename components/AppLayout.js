@@ -36,7 +36,7 @@ export default function AppLayout({ children }) {
   const handleLogout = async () => {
     try {
       await logout();
-      router.push("/masuk");
+      window.location.href = "/masuk";
     } catch (e) {
       console.error("Gagal keluar:", e);
     }

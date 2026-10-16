@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -29,6 +29,8 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   // Helper untuk membaca dokumen user dari Firestore
+  const isRegisteringRef = useRef(false);
+
   const fetchUserProfile = async (currentUser) => {
     if (!currentUser) {
       setUserProfile(null);
@@ -65,6 +67,11 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      // Jika sedang dalam proses registrasi email, biarkan registerWithEmail yang mengelola profile
+      if (isRegisteringRef.current) {
+        return;
+      }
+
       setUser(currentUser);
       if (currentUser) {
         await fetchUserProfile(currentUser);
@@ -90,29 +97,36 @@ export function AuthProvider({ children }) {
   };
 
   const registerWithEmail = async (nama, email, password, noHp) => {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    
-    // Update auth display name
+    isRegisteringRef.current = true;
     try {
-      await updateProfile(cred.user, { displayName: nama });
-    } catch (e) {
-      console.warn("Update profile nama:", e);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Update auth display name
+      try {
+        await updateProfile(cred.user, { displayName: nama });
+      } catch (e) {
+        console.warn("Update profile nama:", e);
+      }
+
+      // Buat dokumen users/{uid} baru sesuai PRD 7.1
+      const userRef = doc(db, "users", cred.user.uid);
+      const newProfile = {
+        nama: nama.trim(),
+        email: cred.user.email,
+        noHp: noHp?.trim() || "",
+        role: "pasien", // Peran awal
+        aktif: true,
+        dibuatPada: serverTimestamp(),
+      };
+
+      await setDoc(userRef, newProfile);
+      setUser(cred.user);
+      setUserProfile(newProfile);
+      setLoading(false);
+      return { user: cred.user, profile: newProfile };
+    } finally {
+      isRegisteringRef.current = false;
     }
-
-    // Buat dokumen users/{uid} baru sesuai PRD 7.1
-    const userRef = doc(db, "users", cred.user.uid);
-    const newProfile = {
-      nama: nama.trim(),
-      email: cred.user.email,
-      noHp: noHp?.trim() || "",
-      role: "pasien", // Peran awal
-      aktif: true,
-      dibuatPada: serverTimestamp(),
-    };
-
-    await setDoc(userRef, newProfile);
-    setUserProfile(newProfile);
-    return { user: cred.user, profile: newProfile };
   };
 
   const loginWithGoogle = async () => {
