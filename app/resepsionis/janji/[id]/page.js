@@ -484,7 +484,7 @@ function RincianJanjiResepsionisContent() {
                   </button>
 
                   {/* 4. Tandai Hadir (hanya jika dikonfirmasi & hari ini) */}
-                  {canMarkHadir && (
+                  {canMarkHadir ? (
                     <button
                       onClick={handleTandaiHadir}
                       disabled={actionLoading}
@@ -493,6 +493,13 @@ function RincianJanjiResepsionisContent() {
                       <UserCheck className="w-4 h-4" />
                       Tandai Pasien Hadir
                     </button>
+                  ) : (
+                    janji.status === "dikonfirmasi" && (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium rounded-xl">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        Tandai Hadir aktif pada hari H ({janji.tanggal})
+                      </span>
+                    )
                   )}
                 </div>
               )}
